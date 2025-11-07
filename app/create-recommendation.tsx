@@ -6,6 +6,7 @@ import {
   Alert,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -207,41 +208,43 @@ export default function CreateRecommendationScreen() {
           style={[styles.container, containerStyle]}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onScrollBeginDrag={Keyboard.dismiss}
         >
-          {/* İçerik Alanı */}
-          <View style={styles.contentArea}>
-            {/* Profil Avatarı */}
-            <View style={styles.avatarContainer}>
-              {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-              ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <MaterialIcons name="person" size={24} color="#FFFFFF" />
-                </View>
-              )}
+            {/* İçerik Alanı */}
+            <View style={styles.contentArea}>
+              {/* Profil Avatarı */}
+              <View style={styles.avatarContainer}>
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <MaterialIcons name="person" size={24} color="#FFFFFF" />
+                  </View>
+                )}
+              </View>
+
+              {/* Metin Girişi */}
+              <TextInput
+                style={styles.textInput}
+                placeholder="Tavsiyeni buraya yaz..."
+                placeholderTextColor="#9CA3AF"
+                value={text}
+                onChangeText={setText}
+                multiline={true}
+                maxLength={MAX_CHARACTERS}
+                textAlignVertical="top"
+              />
             </View>
 
-            {/* Metin Girişi */}
-            <TextInput
-              style={styles.textInput}
-              placeholder="Tavsiyeni buraya yaz..."
-              placeholderTextColor="#9CA3AF"
-              value={text}
-              onChangeText={setText}
-              multiline={true}
-              maxLength={MAX_CHARACTERS}
-              textAlignVertical="top"
-            />
-          </View>
-
-          {/* Hata Mesajı */}
-          {error && (
-            <View style={styles.errorContainer}>
-              <MaterialIcons name="error-outline" size={20} color={COLORS.error || '#ef4444'} />
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          )}
-        </ScrollView>
+            {/* Hata Mesajı */}
+            {error && (
+              <View style={styles.errorContainer}>
+                <MaterialIcons name="error-outline" size={20} color={COLORS.error || '#ef4444'} />
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
+          </ScrollView>
 
         {/* Kategori Seçimi - Alt barın üstünde */}
         <Pressable 
@@ -250,7 +253,10 @@ export default function CreateRecommendationScreen() {
             containerStyle,
             { borderColor: selectedCategory ? COLORS.primary : 'rgba(255, 255, 255, 0.1)' }
           ]}
-          onPress={() => setIsCategoryModalVisible(true)}
+          onPress={() => {
+            Keyboard.dismiss();
+            setIsCategoryModalVisible(true);
+          }}
         >
           <MaterialIcons name="category" size={20} color={selectedCategory ? "#FFFFFF" : "#9CA3AF"} />
           <Text style={[styles.categoryButtonText, selectedCategory && styles.categoryButtonTextSelected]}>

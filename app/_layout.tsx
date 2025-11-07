@@ -67,6 +67,7 @@ const InitialLayout = () => {
             name="create-recommendation" 
             options={{ 
               headerShown: false,
+              presentation: 'modal',
             }} 
           />
           {/* Expo Router diğer ekranları (örn: recommendation/[id]) otomatik bulur */}

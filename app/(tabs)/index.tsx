@@ -1,5 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -694,6 +695,17 @@ export default function HomeScreen() {
         <Text style={[styles.headerTitle, { color: '#BA68C8' }]}>Tavsiyece</Text>
         <View style={styles.headerIconsContainer}>
           <Pressable 
+            style={styles.headerCreateButton}
+            onPress={() => {
+              if (Platform.OS === 'ios') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }
+              router.push('/create-recommendation');
+            }}
+          >
+            <MaterialIcons name="add" size={24} color="#FFFFFF" />
+          </Pressable>
+          <Pressable 
             style={styles.headerIconButton}
             onPress={() => router.push('/(tabs)/notifications')}
           >
@@ -769,6 +781,15 @@ const styles = StyleSheet.create({
     width: 40,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  headerCreateButton: {
+    height: 40,
+    width: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    borderRadius: 20,
+    marginRight: 4,
   },
   subHeader: {
     paddingHorizontal: 16,

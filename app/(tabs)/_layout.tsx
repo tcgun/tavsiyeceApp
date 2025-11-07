@@ -1,77 +1,12 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { PlatformPressable } from '@react-navigation/elements';
 import * as Haptics from 'expo-haptics';
 import { Tabs, usePathname, useRouter } from 'expo-router';
 import React from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { COLORS } from '@/constants/theme';
-
-// Styles tanımı
-const styles = StyleSheet.create({
-  createButtonContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    top: Platform.OS === 'ios' ? -10 : -15,
-  },
-  createButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-});
-
-// Ortada Tavsiye Ekleme Butonu Bileşeni
-function CreateButton(props: any) {
-  const router = useRouter();
-  
-  const handlePress = (e?: any) => {
-    e?.stopPropagation?.();
-    if (Platform.OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    try {
-      router.push('/create-recommendation' as any);
-    } catch (error) {
-      console.error('Navigation error:', error);
-    }
-  };
-  
-  const handlePressIn = () => {
-    if (Platform.OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    props.onPressIn?.();
-  };
-  
-  const { onPress: _onPress, ...restProps } = props;
-  
-  return (
-    <View style={styles.createButtonContainer} pointerEvents="box-none">
-      <PlatformPressable
-        {...restProps}
-        onPress={handlePress}
-        onPressIn={handlePressIn}
-        style={styles.createButton}
-        accessibilityLabel="Tavsiye Ekle"
-        accessibilityRole="button"
-      >
-        <MaterialIcons name="add" size={32} color="#FFFFFF" />
-      </PlatformPressable>
-    </View>
-  );
-}
 
 // Explore Tab Button Component
 function ExploreTabButton(props: any) {
@@ -102,12 +37,10 @@ function ExploreTabButton(props: any) {
 export default function TabLayout() {
   return (
     <Tabs
-      lazy={false}
       screenOptions={{
         tabBarActiveTintColor: '#9ca3af', // Grimsi aktif renk
         tabBarInactiveTintColor: '#6b7280', // Grimsi pasif renk
         tabBarShowLabel: false, // Altındaki yazıları kaldır
-        animationEnabled: false, // Tab geçişlerinde animasyon yok
         tabBarStyle: {
           backgroundColor: COLORS.backgroundDark, // Her zaman koyu mor
           borderTopColor: 'rgba(255, 255, 255, 0.1)',
@@ -140,18 +73,6 @@ export default function TabLayout() {
             />
           ),
           tabBarButton: (props) => <ExploreTabButton {...props} />,
-        }}
-      />
-
-      <Tabs.Screen
-        name="create-recommendation"
-        options={{
-          tabBarButton: (props) => <CreateButton {...props} />,
-        }}
-        listeners={{
-          tabPress: (e) => {
-            e.preventDefault();
-          },
         }}
       />
 
