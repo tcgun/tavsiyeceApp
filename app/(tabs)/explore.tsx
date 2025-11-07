@@ -1,68 +1,39 @@
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router'; // Alt bileşenler (Item'lar) için bu GEREKLİ
+import { useRouter, useLocalSearchParams } from 'expo-router'; // Alt bileşenler (Item'lar) için bu GEREKLİ
 import {
-  collection,
-  doc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  serverTimestamp,
-  where,
-  writeBatch,
+    collection,
+    doc,
+    getDocs,
+    limit,
+    orderBy,
+    query,
+    serverTimestamp,
+    where,
+    writeBatch,
 } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Image,
-  ImageBackground,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  useColorScheme,
-  View,
+    ActivityIndicator,
+    Image,
+    ImageBackground,
+    Platform,
+    Pressable,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    useColorScheme,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../firebaseConfig';
 
-// --- Normalleştirme fonksiyonu ---
-const normalizeText = (text: string) => {
-  if (!text) return '';
-  return text
-    .toLowerCase()
-    .replace(/ı/g, 'i') 
-    .normalize("NFD") 
-    .replace(/[\u0300-\u036f]/g, "") 
-    .replace(/ç/g, 'c')
-    .replace(/ş/g, 's')
-    .replace(/ğ/g, 'g');
-};
+import { COLORS } from '../../constants/theme';
+import { Category, FeaturedUser, RecommendationResult, TrendingItem, UserResult } from '../../types';
+import { normalizeText } from '../../utils/textUtils';
 
-// Renkler
-const COLORS = {
-  primary: '#14b8a6',
-  backgroundLight: '#f6f7f8',
-  backgroundDark: '#101c22',
-  textLight: '#0d171b',
-  textDark: '#f8fafc',
-  cardLight: '#ffffff',
-  cardDark: '#182832',
-  mutedLight: '#6b7280', 
-  mutedDark: '#9ca3af', 
-  borderLight: '#e5e7eb',
-  borderDark: '#374151',
-};
-
-// --- Tipler ---
-type Category = { id: string; name: string; };
-type TrendingItem = { id: string; title: string; description: string; image: string | null; };
-type FeaturedUser = { id: string; name: string; username: string; bio: string; avatar: string; isFollowing: boolean; };
-type RecommendationResult = { id: string; title: string; category: string; image: string | null; };
-type UserResult = { id: string; name: string; username: string; avatar: string; };
 
 // --- Prop Tipleri ---
 type CategoryChipProps = { category: Category; isActive: boolean; isDark: boolean; onPress: () => void; };
@@ -94,14 +65,14 @@ const TrendingCard = ({ item, isDark }: TrendingCardProps) => {
   const mutedTextStyle = { color: isDark ? COLORS.mutedDark : COLORS.mutedLight };
   return (
     <View style={[styles.trendingCard, cardStyle]}>
-      <ImageBackground
-        source={item.image ? { uri: item.image } : undefined}
-        style={[styles.trendingImage, !item.image && styles.imagePlaceholder]}
-        imageStyle={{ borderRadius: 6 }} 
-        resizeMode="cover"
-      >
-        {!item.image && (<MaterialIcons name="image" size={40} color={mutedTextStyle.color} />)}
-      </ImageBackground>
+      {item.image && (
+        <ImageBackground
+          source={{ uri: item.image }}
+          style={styles.trendingImage}
+          imageStyle={{ borderRadius: 6 }} 
+          resizeMode="cover"
+        />
+      )}
       <View>
         <Text style={[styles.trendingTitle, textStyle]}>{item.title}</Text>
         <Text style={[styles.trendingDesc, mutedTextStyle]}>{item.description}</Text>
@@ -111,18 +82,20 @@ const TrendingCard = ({ item, isDark }: TrendingCardProps) => {
 };
 
 const UserCard = ({ user, isDark, currentUserId }: UserCardProps) => {
+  const router = useRouter();
   const [isFollowing, setIsFollowing] = useState(user.isFollowing);
   const [isLoading, setIsLoading] = useState(false); 
   const cardStyle = { backgroundColor: isDark ? COLORS.cardDark : COLORS.cardLight };
   const textStyle = { color: isDark ? COLORS.textDark : COLORS.textLight };
   const mutedTextStyle = { color: isDark ? COLORS.mutedDark : COLORS.mutedLight };
   const followButtonStyle = {
-    backgroundColor: isFollowing ? (isDark ? 'rgba(20, 184, 166, 0.3)' : 'rgba(20, 184, 166, 0.2)') : COLORS.primary,
+    backgroundColor: isFollowing ? (isDark ? 'rgba(155, 89, 182, 0.3)' : 'rgba(155, 89, 182, 0.2)') : COLORS.primary,
   };
   const followButtonTextStyle = {
     color: isFollowing ? COLORS.primary : '#FFFFFF',
   };
-  const handleFollowToggle = async () => {
+  const handleFollowToggle = async (e: any) => {
+    e.stopPropagation();
     if (!currentUserId || currentUserId === user.id) return; 
     setIsLoading(true);
     const followingRef = doc(db, 'users', currentUserId, 'following', user.id);
@@ -145,29 +118,42 @@ const UserCard = ({ user, isDark, currentUserId }: UserCardProps) => {
       setIsLoading(false);
     }
   };
+  const handleUserPress = () => {
+    router.push({ pathname: '/profile/[id]', params: { id: user.id } });
+  };
   if (user.id === currentUserId) return null; 
   return (
     <View style={[styles.userCard, cardStyle]}>
-      <Image source={{ uri: user.avatar }} style={styles.userAvatar} />
-      <View style={styles.userInfo}>
+      <Pressable 
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}
+        onPress={handleUserPress}
+      >
+        <Image source={{ uri: user.avatar }} style={styles.userAvatar} />
         <Text style={[styles.userName, textStyle]}>{user.name}</Text>
+      </Pressable>
+      <View style={{ flex: 1 }}>
         <Text style={[styles.userFollowers, mutedTextStyle]} numberOfLines={1}>
           {user.bio || `@${user.username}`}
         </Text>
       </View>
-      <Pressable 
-        style={[styles.followButton, followButtonStyle]} 
-        onPress={handleFollowToggle}
-        disabled={isLoading}
+      <View
+        onStartShouldSetResponder={() => true}
+        onResponderTerminationRequest={() => false}
       >
-        {isLoading ? (
-          <ActivityIndicator size="small" color={isFollowing ? COLORS.primary : '#FFFFFF'} />
-        ) : (
-          <Text style={[styles.followButtonText, followButtonTextStyle]}>
-            {isFollowing ? 'Takip' : 'Takip Et'}
-          </Text>
-        )}
-      </Pressable>
+        <Pressable 
+          style={[styles.followButton, followButtonStyle]} 
+          onPress={handleFollowToggle}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <ActivityIndicator size="small" color={isFollowing ? COLORS.primary : '#FFFFFF'} />
+          ) : (
+            <Text style={[styles.followButtonText, followButtonTextStyle]}>
+              {isFollowing ? 'Takip' : 'Takip Et'}
+            </Text>
+          )}
+        </Pressable>
+      </View>
     </View>
   );
 };
@@ -183,10 +169,12 @@ const RecommendationResultItem = ({ item, isDark }: RecommendationResultItemProp
       style={[styles.resultCard, cardStyle, {borderColor: isDark ? COLORS.borderDark : COLORS.borderLight}]}
       onPress={() => router.push({ pathname: '/recommendation/[id]', params: { id: item.id } })}
     >
-      <Image 
-        source={item.image ? { uri: item.image } : require('../../assets/images/icon.png')} 
-        style={styles.resultImage} 
-      />
+      {item.image && (
+        <Image 
+          source={{ uri: item.image }} 
+          style={styles.resultImage} 
+        />
+      )}
       <View style={styles.resultContent}>
         <Text style={[styles.resultTitle, textStyle]} numberOfLines={1}>{item.title}</Text>
         <Text style={[styles.resultSubtitle, mutedTextStyle]}>{item.category}</Text>
@@ -222,7 +210,8 @@ export default function ExploreScreen() {
   const isDark = colorScheme === 'dark';
   const { user: authUser } = useAuth(); 
   const currentUserId = authUser?.uid;
-  // const router = useRouter(); // <-- DÜZELTME: Kullanılmadığı için kaldırıldı
+  const router = useRouter();
+  const params = useLocalSearchParams<{ clearSearch?: string }>();
 
   // State'ler
   const [isLoading, setIsLoading] = useState(true); 
@@ -231,6 +220,8 @@ export default function ExploreScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [trendingItems, setTrendingItems] = useState<TrendingItem[]>([]);
   const [featuredUsers, setFeaturedUsers] = useState<FeaturedUser[]>([]);
+  const [popularUsers, setPopularUsers] = useState<FeaturedUser[]>([]);
+  const [activeUserTab, setActiveUserTab] = useState<'new' | 'popular'>('new');
   const [activeCategory, setActiveCategory] = useState('all'); 
   const [myFollowingIds, setMyFollowingIds] = useState<Set<string>>(new Set()); 
   
@@ -239,6 +230,18 @@ export default function ExploreScreen() {
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [recommendationResults, setRecommendationResults] = useState<RecommendationResult[]>([]);
   const [userResults, setUserResults] = useState<UserResult[]>([]);
+
+  // Tab bar'dan geldiğinde aramayı temizle
+  React.useEffect(() => {
+    if (params.clearSearch === 'true') {
+      setSearchQuery('');
+      setIsSearching(false);
+      setUserResults([]);
+      setRecommendationResults([]);
+      // Query parameter'ı temizle
+      router.setParams({ clearSearch: undefined });
+    }
+  }, [params.clearSearch, router]);
 
   // 1. useEffect (Takip listesi, Kategoriler, Trendler)
   useEffect(() => {
@@ -288,6 +291,7 @@ export default function ExploreScreen() {
        setIsLoadingUsers(false);
        return;
     }
+    
     const fetchFeaturedUsers = async () => {
       try {
         setIsLoadingUsers(true);
@@ -319,8 +323,44 @@ export default function ExploreScreen() {
          setIsLoadingUsers(false);
       }
     };
-    fetchFeaturedUsers();
-  }, [myFollowingIds, isLoading]); 
+    
+    const fetchPopularUsers = async () => {
+      try {
+        // Popüler kullanıcıları çek (takipçi sayısına göre sırala)
+        // Bu örnek için, gerçek uygulamada takipçi sayısına göre sıralama yapmalısınız
+        const userQuery = query(
+          collection(db, 'users'), 
+          orderBy('followersCount', 'desc'), 
+          limit(5)
+        );
+        const userSnapshot = await getDocs(userQuery);
+        const fetchedUsers: FeaturedUser[] = [];
+        userSnapshot.forEach(doc => {
+          const data = doc.data();
+          const avatar = data.photoURL || `https://ui-avatars.com/api/?name=${data.username || data.name || 'T'}&background=random`;
+          
+          fetchedUsers.push({
+            id: doc.id,
+            name: data.name || 'İsimsiz',
+            username: data.username || 'kullaniciadi',
+            bio: data.bio || '',
+            avatar: avatar,
+            isFollowing: myFollowingIds.has(doc.id), 
+          });
+        });
+        setPopularUsers(fetchedUsers);
+      } catch (err: any) {
+         console.error("Explore (popüler kullanıcı) çekilirken hata:", err);
+         setError(prevError => prevError || "Popüler kullanıcılar yüklenemedi.");
+      }
+    };
+    
+    if (activeUserTab === 'new') {
+      fetchFeaturedUsers();
+    } else {
+      fetchPopularUsers();
+    }
+  }, [myFollowingIds, isLoading, activeUserTab]); 
 
   // Arama Fonksiyonu
   const performSearch = async (term: string) => {
@@ -404,13 +444,21 @@ export default function ExploreScreen() {
   const textStyle = { color: isDark ? COLORS.textDark : COLORS.textLight };
   const mutedTextStyle = { color: isDark ? COLORS.mutedDark : COLORS.mutedLight };
   const iconColor = isDark ? COLORS.textDark : COLORS.textLight;
-  const searchBg = isDark ? 'rgba(20, 184, 166, 0.3)' : 'rgba(20, 184, 166, 0.2)';
-  const placeholderColor = isDark ? 'rgba(20, 184, 166, 0.7)' : 'rgba(20, 184, 166, 0.8)';
+  const searchBg = isDark ? 'rgba(155, 89, 182, 0.3)' : 'rgba(155, 89, 182, 0.2)';
+  const placeholderColor = isDark ? 'rgba(155, 89, 182, 0.7)' : 'rgba(155, 89, 182, 0.8)';
 
   // Yüklenme veya Hata durumu
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.safeArea, containerStyle, styles.spinnerContainer]}>
+      <SafeAreaView 
+        style={[styles.safeArea, containerStyle, styles.spinnerContainer]}
+        edges={Platform.OS === 'ios' ? ['top', 'bottom'] : ['top']}
+      >
+        <StatusBar 
+          barStyle="light-content" 
+          backgroundColor={Platform.OS === 'android' ? (isDark ? COLORS.backgroundDark : COLORS.backgroundLight) : undefined}
+          translucent={Platform.OS === 'android'}
+        />
         <ActivityIndicator size="large" color={COLORS.primary} />
         <Text style={[styles.loadingText, { color: isDark ? COLORS.mutedDark : COLORS.mutedLight }]}>
           Keşfet yükleniyor...
@@ -420,7 +468,15 @@ export default function ExploreScreen() {
   }
   if (error && categories.length === 0) {
      return (
-      <SafeAreaView style={[styles.safeArea, containerStyle, styles.spinnerContainer]}>
+      <SafeAreaView 
+        style={[styles.safeArea, containerStyle, styles.spinnerContainer]}
+        edges={Platform.OS === 'ios' ? ['top', 'bottom'] : ['top']}
+      >
+        <StatusBar 
+          barStyle="light-content" 
+          backgroundColor={Platform.OS === 'android' ? (isDark ? COLORS.backgroundDark : COLORS.backgroundLight) : undefined}
+          translucent={Platform.OS === 'android'}
+        />
         <MaterialIcons name="error-outline" size={48} color="red" />
         <Text style={styles.errorText}>{error}</Text>
       </SafeAreaView>
@@ -488,12 +544,26 @@ export default function ExploreScreen() {
         </ScrollView>
       </View>
       <View style={styles.usersSection}>
-        <Text style={[styles.sectionTitle, headerTextStyle]}>Yeni Tavsiyeciler</Text>
+        <View style={styles.userTabsContainer}>
+          <Pressable 
+            style={[styles.userTab, activeUserTab === 'new' && styles.activeUserTab]}
+            onPress={() => setActiveUserTab('new')}
+          >
+            <Text style={[styles.userTabText, activeUserTab === 'new' ? { color: COLORS.primary } : mutedTextStyle]}>Yeni</Text>
+          </Pressable>
+          <Pressable 
+            style={[styles.userTab, activeUserTab === 'popular' && styles.activeUserTab]}
+            onPress={() => setActiveUserTab('popular')}
+          >
+            <Text style={[styles.userTabText, activeUserTab === 'popular' ? { color: COLORS.primary } : mutedTextStyle]}>Popüler</Text>
+          </Pressable>
+        </View>
+        
         <View style={styles.usersList}>
           {isLoadingUsers ? (
             <ActivityIndicator color={COLORS.primary} />
           ) : (
-            featuredUsers.map((user) => (
+            (activeUserTab === 'new' ? featuredUsers : popularUsers).map((user) => (
               <UserCard 
                 key={user.id} 
                 user={user} 
@@ -502,7 +572,7 @@ export default function ExploreScreen() {
               />
             ))
           )}
-          {error && !isLoadingUsers && featuredUsers.length === 0 && (
+          {error && !isLoadingUsers && (activeUserTab === 'new' ? featuredUsers : popularUsers).length === 0 && (
                <Text style={[styles.errorText, {fontSize: 14, marginTop: 10}]}>{error}</Text>
           )}
         </View>
@@ -512,8 +582,15 @@ export default function ExploreScreen() {
 
   // Ana Render
   return (
-    <SafeAreaView style={[styles.safeArea, containerStyle]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+    <SafeAreaView 
+      style={[styles.safeArea, containerStyle]}
+      edges={Platform.OS === 'ios' ? ['top', 'bottom'] : ['top']}
+    >
+      <StatusBar 
+        barStyle="light-content" 
+        backgroundColor={Platform.OS === 'android' ? (isDark ? COLORS.backgroundDark : COLORS.backgroundLight) : undefined}
+        translucent={Platform.OS === 'android'}
+      />
       
       <View style={[styles.header, headerStyle]}>
         <Pressable style={styles.headerButton}>
@@ -659,6 +736,24 @@ const styles = StyleSheet.create({
   },
   usersSection: {
     paddingTop: 20,
+  },
+  userTabsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  userTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeUserTab: {
+    borderBottomColor: COLORS.primary,
+  },
+  userTabText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   sectionTitle: {
     fontSize: 20,

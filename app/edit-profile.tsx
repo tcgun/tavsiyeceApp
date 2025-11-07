@@ -20,36 +20,8 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebaseConfig';
 
-// --- DÜZELTME: Renkler turuncu temaya güncellendi ---
-const COLORS = {
-  primary: '#FF9800', // Turuncu (Tavsiye Ekle'den)
-  backgroundLight: '#ffffff',
-  backgroundDark: '#121212',
-  textLight: '#1f2937', 
-  textDark: '#f3f4f6', 
-  mutedLight: '#6b7280', 
-  mutedDark: '#9ca3af', 
-  cardLight: '#F7F8FA', // Input arkaplanı
-  cardDark: '#1E1E1E', // Koyu input arkaplanı
-  borderLight: '#E2E8F0',
-  borderDark: '#374151',
-  error: '#ef4444',
-  elementBgLight: 'rgba(255, 152, 0, 0.1)', // Turuncu %10
-  elementBgDark: 'rgba(255, 152, 0, 0.2)', // Turuncu %20
-};
-
-// --- Türkçe Karakter Normalleştirme Fonksiyonu ---
-const normalizeText = (text: string) => {
-  if (!text) return '';
-  return text
-    .toLowerCase()
-    .replace(/ı/g, 'i') 
-    .normalize("NFD") 
-    .replace(/[\u0300-\u036f]/g, "") 
-    .replace(/ç/g, 'c')
-    .replace(/ş/g, 's')
-    .replace(/ğ/g, 'g');
-};
+import { COLORS } from '../constants/theme';
+import { normalizeText } from '../utils/textUtils';
 
 // --- Ana Bileşen ---
 export default function EditProfileScreen() {
@@ -64,10 +36,17 @@ export default function EditProfileScreen() {
   const [error, setError] = useState<string | null>(null);
 
   // Form State'leri
+  // Form State'leri
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
   const [photoURL, setPhotoURL] = useState<string | null>(null);
+  
+  // Sosyal medya state'leri
+  const [instagram, setInstagram] = useState('');
+  const [twitter, setTwitter] = useState('');
+  const [facebook, setFacebook] = useState('');
+  const [linkedin, setLinkedin] = useState('');
 
   // --- 1. Verileri Çekme ---
   useEffect(() => {
@@ -89,6 +68,14 @@ export default function EditProfileScreen() {
           setUsername(userData.username || '');
           setBio(userData.bio || '');
           setPhotoURL(userData.photoURL || null);
+          
+          // Sosyal medya verilerini çek
+          if (userData.socialMedia) {
+            setInstagram(userData.socialMedia.instagram || '');
+            setTwitter(userData.socialMedia.twitter || '');
+            setFacebook(userData.socialMedia.facebook || '');
+            setLinkedin(userData.socialMedia.linkedin || '');
+          }
         } else {
           setError("Kullanıcı verisi bulunamadı.");
         }
@@ -123,6 +110,14 @@ export default function EditProfileScreen() {
         bio: bio,
         name_lowercase: normalizeText(name),
         username_lowercase: normalizeText(username),
+        
+        // Sosyal medya verilerini kaydet
+        socialMedia: {
+          instagram: instagram,
+          twitter: twitter,
+          facebook: facebook,
+          linkedin: linkedin,
+        },
       };
 
       await updateDoc(userDocRef, updatedData);
@@ -168,7 +163,7 @@ export default function EditProfileScreen() {
   
   return (
     <SafeAreaView style={[styles.safeArea, containerStyle]} edges={['bottom']}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="light-content" />
       {/* Header */}
       <Stack.Screen
         options={{
@@ -194,7 +189,7 @@ export default function EditProfileScreen() {
             {profileImageUrl ? (
                 <Image source={{ uri: profileImageUrl }} style={styles.profileImage} />
             ) : (
-                <View style={[styles.profileImage, styles.profileImagePlaceholder, {backgroundColor: isDark ? COLORS.elementBgDark : COLORS.elementBgLight}]}>
+                <View style={[styles.profileImage, styles.profileImagePlaceholder, {backgroundColor: isDark ? COLORS.cardDark : COLORS.cardLight}]}>
                     <MaterialIcons name="person" size={60} color={isDark ? COLORS.mutedDark : COLORS.mutedLight} />
                 </View>
             )}
@@ -245,6 +240,63 @@ export default function EditProfileScreen() {
                     multiline={true}
                     numberOfLines={4}
                 />
+            </View>
+            
+            {/* Sosyal Medya Alanları */}
+            <View style={styles.socialMediaSection}>
+              <Text style={[styles.sectionTitle, textStyle]}>Sosyal Medya</Text>
+              
+              <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, textStyle]}>Instagram</Text>
+                  <TextInput
+                      style={[styles.input, inputStyle]}
+                      placeholder="kullaniciadi"
+                      placeholderTextColor={COLORS.mutedLight}
+                      value={instagram}
+                      onChangeText={setInstagram}
+                      autoCapitalize="none"
+                      textContentType="username"
+                  />
+              </View>
+              
+              <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, textStyle]}>Twitter</Text>
+                  <TextInput
+                      style={[styles.input, inputStyle]}
+                      placeholder="kullaniciadi"
+                      placeholderTextColor={COLORS.mutedLight}
+                      value={twitter}
+                      onChangeText={setTwitter}
+                      autoCapitalize="none"
+                      textContentType="username"
+                  />
+              </View>
+              
+              <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, textStyle]}>Facebook</Text>
+                  <TextInput
+                      style={[styles.input, inputStyle]}
+                      placeholder="kullaniciadi"
+                      placeholderTextColor={COLORS.mutedLight}
+                      value={facebook}
+                      onChangeText={setFacebook}
+                      autoCapitalize="none"
+                      textContentType="username"
+                  />
+              </View>
+              
+              <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, textStyle]}>LinkedIn</Text>
+                  <TextInput
+                      style={[styles.input, inputStyle]}
+                      placeholder="kullaniciadi"
+                      placeholderTextColor={COLORS.mutedLight}
+                      value={linkedin}
+                      onChangeText={setLinkedin}
+                      autoCapitalize="none"
+                      textContentType="username"
+                  />
+              </View>
             </View>
           </View>
         </View>
@@ -327,6 +379,14 @@ const styles = StyleSheet.create({
     minHeight: 120,
     textAlignVertical: 'top',
     paddingTop: 16,
+  },
+  socialMediaSection: {
+    marginTop: 20,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 16,
   },
   footer: {
     padding: 16,

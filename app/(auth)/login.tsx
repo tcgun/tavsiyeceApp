@@ -2,18 +2,28 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TextStyle // fontWeight tipi için eklendi
-    ,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TextStyle // fontWeight tipi için eklendi
+  ,
 
-    useColorScheme,
-    View
+
+
+
+
+
+
+
+
+
+
+  useColorScheme,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // Firebase Authentication importları
@@ -22,22 +32,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import Svg, { Path } from 'react-native-svg'; // SVG ikonları için (expo install react-native-svg yapmayı unutmayın)
 import { auth } from '../../firebaseConfig'; // firebaseConfig.ts projenizin kök dizininde olmalı
 
-// Keşfet sayfasından alınan renk paleti
-const COLORS = {
-  primary: '#14b8a6', // Teal (Keşfet ile aynı)
-  backgroundLight: '#F0F2F5', // HTML'den alındı
-  backgroundDark: '#101c22',
-  textLight: '#333333', // HTML'den
-  textDark: '#F0F2F5',
-  cardLight: '#ffffff', // Input arka planı için
-  cardDark: '#1f2937', // Input arka planı için (gray-800 gibi)
-  mutedLight: '#6b7280', // gray-500
-  mutedDark: '#9ca3af', // gray-400
-  accent: '#4A90E2', // HTML'den (Şifremi unuttum linki)
-  separatorLight: '#cfdfe7', // HTML'den
-  separatorDark: '#374151', // gray-700
-  error: '#ef4444', // red-500
-};
+import { COLORS } from '../../constants/theme';
 
 // SVG İkonları (Basit Placeholderlar)
 // GoogleIcon, FacebookIcon, AppleIcon fonksiyonları aynı kalabilir...
@@ -64,7 +59,7 @@ export default function LoginScreen() {
   const isDark = colorScheme === 'dark';
   const router = useRouter();
 
-  const [email, setEmail] = useState('');
+  const [loginInput, setLoginInput] = useState('');
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -94,15 +89,47 @@ export default function LoginScreen() {
   };
 
 
+  // E-posta formatını kontrol et
+  const isEmailFormat = (input: string): boolean => {
+    const trimmed = input.trim();
+    // Basit e-posta kontrolü: @ işareti içeriyor ve @ sonrasında en az bir . var
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(trimmed);
+  };
+
   const handleLogin = async () => {
-    if (!email || !password) {
-      setError("E-posta ve şifre gereklidir.");
+    if (!loginInput || !password) {
+      setError("E-posta/Kullanıcı adı ve şifre gereklidir.");
       return;
     }
+    
     setIsLoading(true);
     setError(null);
+    
+    let loginEmail = loginInput.trim();
+    
+    // E-posta formatında değilse, kullanıcı adı olarak kabul et ve e-posta bul
+    if (!isEmailFormat(loginEmail)) {
+      try {
+        const { getEmailByUsername } = await import('../../services/firebase/userService');
+        const userEmail = await getEmailByUsername(loginEmail);
+        if (userEmail) {
+          loginEmail = userEmail;
+        } else {
+          setError("Kullanıcı adı bulunamadı.");
+          setIsLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.error("Kullanıcı adı kontrol hatası:", err);
+        setError("Kullanıcı adı kontrol edilirken bir hata oluştu.");
+        setIsLoading(false);
+        return;
+      }
+    }
+    
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, loginEmail, password);
       console.log('Giriş başarılı!');
       router.replace('/(tabs)'); // Ana tab navigasyonuna yönlendir
     } catch (err: any) {
@@ -111,6 +138,10 @@ export default function LoginScreen() {
           setError("E-posta veya şifre hatalı.");
       } else if (err.code === 'auth/invalid-email') {
           setError("Geçersiz e-posta formatı.");
+      } else if (err.code === 'auth/network-request-failed') {
+          setError("İnternet bağlantısı sorunu var. Lütfen bağlantınızı kontrol edip tekrar deneyin.");
+      } else if (err.code === 'auth/too-many-requests') {
+          setError("Çok fazla deneme yapıldı. Lütfen bir süre sonra tekrar deneyin.");
       } else {
           setError("Giriş sırasında bir hata oluştu. Lütfen tekrar deneyin.");
       }
@@ -120,19 +151,16 @@ export default function LoginScreen() {
   };
 
   const navigateToSignUp = () => {
-      // --- DÜZELTME: Obje formatı kullan ---
-      // (app/signup.tsx dosyasının var olduğundan emin olun)
-      router.push({ pathname: '/signup' });
+      router.replace('/(auth)/signup');
   };
   const navigateToForgotPassword = () => {
-      // --- DÜZELTME: Obje formatı kullan ---
-      // (app/forgot-password.tsx dosyasının var olduğundan emin olun)
-      router.push({ pathname: '/forgot-password' });
+      // Şifremi unuttum sayfası henüz oluşturulmadı
+      alert('Şifremi unuttum sayfası henüz mevcut değil');
   }
 
   return (
     <SafeAreaView style={[styles.safeArea, containerStyle]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         {/* Başlık */}
         <View style={styles.header}>
@@ -157,24 +185,22 @@ export default function LoginScreen() {
 
         {/* Form Alanları */}
         <View style={styles.formContainer}>
-          {/* E-posta */}
+          {/* E-posta veya Kullanıcı Adı - Tek Input */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, textStyle]}>E-posta</Text>
             <TextInput
               style={[styles.input, inputStyle]}
-              placeholder="eposta@adresiniz.com"
+              placeholder="eposta / kullanıcı adı"
               placeholderTextColor={isDark ? COLORS.mutedDark : COLORS.mutedLight}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
+              value={loginInput}
+              onChangeText={setLoginInput}
+              keyboardType="default"
               autoCapitalize="none"
-              textContentType="emailAddress" // Klavye türünü ayarla
+              textContentType="username"
             />
           </View>
 
           {/* Şifre */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, textStyle]}>Şifre</Text>
             <View style={[styles.passwordContainer, inputStyle]}>
               <TextInput
                 style={[styles.passwordInput, { color: inputStyle.color }]}
@@ -184,7 +210,7 @@ export default function LoginScreen() {
                 onChangeText={setPassword}
                 secureTextEntry={!passwordVisible}
                 autoCapitalize="none"
-                textContentType="password" // Klavye türünü ayarla
+                textContentType="password"
               />
               <Pressable onPress={() => setPasswordVisible(!passwordVisible)} style={styles.eyeIcon}>
                 <MaterialIcons

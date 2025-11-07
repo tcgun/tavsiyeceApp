@@ -19,36 +19,8 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../firebaseConfig';
 
-// --- YENİ FONKSİYON: Türkçe karakterleri normalleştir ---
-const normalizeText = (text: string) => {
-  if (!text) return '';
-  return text
-    .toLowerCase()
-    .replace(/ı/g, 'i') // 'ı' -> 'i'
-    .normalize("NFD") // Karakterleri ve aksanlarını ayır
-    .replace(/[\u0300-\u036f]/g, "") // Aksanları kaldır (ö -> o, ü -> u)
-    .replace(/ç/g, 'c') // Diğer dönüşümler
-    .replace(/ş/g, 's')
-    .replace(/ğ/g, 'g');
-};
-// --- FONKSİYON SONU ---
-
-// Login sayfasıyla aynı renk paleti
-const COLORS = {
-  primary: '#14b8a6', // Teal (Keşfet ile aynı)
-  backgroundLight: '#F0F2F5',
-  backgroundDark: '#101c22',
-  textLight: '#333333',
-  textDark: '#F0F2F5',
-  cardLight: '#ffffff',
-  cardDark: '#1f2937',
-  mutedLight: '#6b7280',
-  mutedDark: '#9ca3af',
-  accent: '#4A90E2',
-  separatorLight: '#cfdfe7',
-  separatorDark: '#374151',
-  error: '#ef4444',
-};
+import { COLORS } from '../../constants/theme';
+import { normalizeText } from '../../utils/textUtils';
 
 // --- Ana Kayıt Ekranı ---
 
@@ -155,7 +127,7 @@ export default function SignUpScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, containerStyle]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         {/* Başlık */}
         <View style={styles.header}>

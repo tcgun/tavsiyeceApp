@@ -2,15 +2,12 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import {
     collection,
-    doc,
     documentId,
     getDocs,
     limit,
     orderBy,
     query,
-    updateDoc,
-    where,
-    writeBatch,
+    where
 } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
@@ -35,38 +32,10 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// --- Renkler ---
-const COLORS = {
-  primary: '#13a4ec',
-  backgroundLight: '#f6f7f8',
-  backgroundDark: '#101c22',
-  cardLight: '#ffffff',
-  cardDark: '#1a2a33',
-  textLight: '#1f2937',
-  textDark: '#f3f4f6',
-  mutedLight: '#6b7280',
-  mutedDark: '#9ca3af',
-  borderLight: '#e5e7eb',
-  borderDark: '#374151',
-};
-
-// --- Tipler ---
-type Notification = {
-  id: string;
-  type: string;
-  sender: {
-    id: string;
-    name: string;
-    avatar: string;
-  };
-  linkPath: '/(tabs)/notifications' | '/recommendation/[id]';
-  linkParams: Record<string, string>;
-  imageUrl: string | null;
-  message: string;
-  commentText?: string;
-  createdAt: any;
-  isRead: boolean;
-};
+import { COLORS } from '../../constants/theme';
+import { markAllNotificationsAsRead, markNotificationAsRead } from '../../services/firebase/notificationService';
+import { Notification } from '../../types';
+import { formatRelativeTime, getAvatarUrlWithFallback } from '../../utils';
 
 // --- Bildirim Öğesi ---
 const NotificationItem = ({
@@ -98,18 +67,6 @@ const NotificationItem = ({
       : COLORS.cardLight,
   };
 
-  const formatTime = (timestamp: any) => {
-    if (!timestamp || !timestamp.seconds) return 'şimdi';
-    const now = new Date();
-    const notificationDate = timestamp.toDate();
-    const diffInSeconds = Math.floor((now.getTime() - notificationDate.getTime()) / 1000);
-
-    if (diffInSeconds < 60) return 'şimdi';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} dk önce`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} saat önce`;
-    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} gün önce`;
-    return notificationDate.toLocaleDateString('tr-TR');
-  };
 
   // 🔹 Firestore okundu güncellemesi
   const markAsRead = async () => {
@@ -117,8 +74,7 @@ const NotificationItem = ({
       const currentUser = auth.currentUser;
       if (!currentUser || isRead) return;
       setIsRead(true); // UI anında
-      const notifRef = doc(db, 'users', currentUser.uid, 'notifications', item.id);
-      await updateDoc(notifRef, { isRead: true });
+      await markNotificationAsRead(currentUser.uid, item.id);
     } catch (err) {
       console.warn('Bildirim okundu olarak işaretlenemedi:', err);
     }
@@ -155,7 +111,7 @@ const NotificationItem = ({
           )}
         </Text>
         <Text style={[styles.timeText, mutedTextStyle]}>
-          {formatTime(item.createdAt)}
+          {formatRelativeTime(item.createdAt)}
         </Text>
       </View>
 
@@ -187,14 +143,7 @@ export default function NotificationsScreen() {
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
 
       // Firestore batch güncellemesi
-      const batch = writeBatch(db);
-      notifications.forEach(n => {
-        if (!n.isRead) {
-          const notifRef = doc(db, 'users', currentUser.uid, 'notifications', n.id);
-          batch.update(notifRef, { isRead: true });
-        }
-      });
-      await batch.commit();
+      await markAllNotificationsAsRead(currentUser.uid);
     } catch (err) {
       console.warn('Tüm bildirimler okundu olarak işaretlenemedi:', err);
     }
@@ -259,6 +208,7 @@ export default function NotificationsScreen() {
           let messageText = 'yeni bir bildirim gönderdi.';
           if (notif.type === 'Begeniler') messageText = 'tavsiyeni beğendi.';
           if (notif.type === 'Yorumlar') messageText = 'tavsiyene yorum yaptı';
+          if (notif.type === 'Yanitlar') messageText = 'yorumuna yanıt verdi';
           if (notif.type === 'Takip') messageText = 'seni takip etmeye başladı.';
 
           let commentText: string | undefined;
@@ -286,10 +236,11 @@ export default function NotificationsScreen() {
             sender: {
               id: notif.senderId,
               name: senderInfo?.name || notif.senderName || 'Biri',
-              avatar:
-                senderInfo?.photoURL ||
-                notif.senderPhotoURL ||
-                `https://ui-avatars.com/api/?name=${notif.senderName || 'B'}&background=random`,
+              avatar: getAvatarUrlWithFallback(
+                senderInfo?.photoURL || notif.senderPhotoURL,
+                senderInfo?.name || notif.senderName,
+                undefined
+              ),
             },
             linkPath: finalLinkPath,
             linkParams: finalLinkParams,
@@ -343,7 +294,7 @@ export default function NotificationsScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, containerStyle]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="light-content" />
       <Stack.Screen
         options={{
           headerShown: true,

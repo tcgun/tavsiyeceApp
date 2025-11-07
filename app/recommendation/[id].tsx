@@ -1,18 +1,13 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,
-  documentId,
   getDoc,
   getDocs,
-  orderBy,
-  query,
   serverTimestamp,
   setDoc,
-  where,
 } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -32,85 +27,17 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { CommentItem } from '../../components/CommentItem';
+import { StarRating } from '../../components/StarRating';
+import { COLORS } from '../../constants/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../firebaseConfig';
-
-// Renkler
-const COLORS = {
-  primary: '#ff7a5c', 
-  backgroundLight: '#f5f5f5',
-  backgroundDark: '#1a1a1a',
-  textLight: '#1a1a1a',
-  textDark: '#f5f5f5',
-  mutedLight: '#6b7280',
-  mutedDark: '#9ca3af',
-};
-
-// --- Tipler ---
-type Recommendation = {
-  id: string;
-  category: string;
-  title: string;
-  text: string;
-  userId: string;
-  image: string | null;
-  rating: number | null;
-};
-type User = {
-  name: string;
-  username: string;
-  photoURL: string | null;
-  bio: string;
-};
-type Comment = {
-  id: string;
-  text: string;
-  createdAt: any; 
-  userId: string; 
-  user: {
-    name: string;
-    avatar: string;
-  };
-};
-
-// --- Alt Bileşenler ---
-const StarRating = ({ rating, isDark }: { rating: number, isDark: boolean }) => {
-  const stars = [];
-  const maxRating = 5;
-  const starColor = COLORS.primary;
-  const emptyStarColor = isDark ? COLORS.mutedDark : COLORS.mutedLight;
-  for (let i = 1; i <= maxRating; i++) {
-    if (i <= rating) {
-      stars.push(<MaterialIcons key={i} name="star" size={20} color={starColor} />);
-    } else if (i - 0.5 <= rating) {
-      stars.push(<MaterialIcons key={i} name="star-half" size={20} color={starColor} />);
-    } else {
-      stars.push(<MaterialIcons key={i} name="star-border" size={20} color={emptyStarColor} />);
-    }
-  }
-  return (
-    <View style={styles.rating}>
-      <View style={{ flexDirection: 'row' }}>{stars}</View>
-      <Text style={[styles.ratingText, { color: isDark ? COLORS.textDark : COLORS.textLight }]}>
-        {rating.toFixed(1)}
-      </Text>
-    </View>
-  );
-};
-const CommentItem = ({ comment, isDark }: { comment: Comment, isDark: boolean }) => {
-  const router = useRouter();
-  const textStyle = { color: isDark ? COLORS.textDark : COLORS.textLight };
-  const mutedTextStyle = { color: isDark ? COLORS.mutedDark : COLORS.mutedLight };
-  return (
-    <Pressable style={styles.commentItem} onPress={() => router.push({ pathname: '/profile/[id]', params: { id: comment.userId } })}>
-      <Image source={{ uri: comment.user.avatar }} style={styles.avatarSmall} />
-      <View style={styles.commentContent}>
-        <Text style={[styles.commentName, textStyle]}>{comment.user.name}</Text>
-        <Text style={[styles.commentText, mutedTextStyle]}>{comment.text}</Text>
-      </View>
-    </Pressable>
-  );
-};
+import { addComment, getComments } from '../../services/firebase/commentService';
+import { createCommentNotification, createLikeNotification } from '../../services/firebase/notificationService';
+import { likeRecommendation, unlikeRecommendation } from '../../services/firebase/recommendationService';
+import { getUserProfile } from '../../services/firebase/userService';
+import { Comment, Recommendation, User } from '../../types';
+import { getAvatarUrlWithFallback } from '../../utils/avatarUtils';
 
 
 // --- Ana Ekran Bileşeni ---
@@ -139,7 +66,10 @@ export default function RecommendationDetailScreen() {
 
   const [isLiked, setIsLiked] = useState(false); 
   const [likeCount, setLikeCount] = useState(0); 
-  const [isLiking, setIsLiking] = useState(false); 
+  const [isLiking, setIsLiking] = useState(false);
+  
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isSaving, setIsSaving] = useState(false); 
 
   const fetchCurrentUserProfile = useCallback(async () => {
     if (authUser) {
@@ -179,74 +109,22 @@ export default function RecommendationDetailScreen() {
 
         // 2. Tavsiyeyi yapanı çek
         if (recData.userId) {
-            const userRef = doc(db, 'users', recData.userId);
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-                setRecommender(userSnap.data() as User);
+            const recommenderProfile = await getUserProfile(recData.userId);
+            if (recommenderProfile) {
+                setRecommender({
+                  name: recommenderProfile.name,
+                  username: recommenderProfile.username,
+                  photoURL: recommenderProfile.photoURL,
+                  bio: recommenderProfile.bio,
+                });
             }
         } else {
            console.warn(`Recommendation ${id} has invalid or missing userId: ${recData.userId}`);
         }
 
-        // 3. Yorumları Çek
-        const commentsRef = collection(db, 'recommendations', id, 'comments');
-        const commentsQuery = query(commentsRef, orderBy('createdAt', 'desc'));
-        const commentsSnapshot = await getDocs(commentsQuery);
-        
-        const fetchedCommentsData: any[] = [];
-        const commentUserIDs = new Set<string>();
-        commentsSnapshot.forEach((doc) => {
-          const data = doc.data();
-          fetchedCommentsData.push({ id: doc.id, ...data });
-           if (data.userId) {
-            commentUserIDs.add(data.userId);
-          }
-        });
-
-        // 4. Yorumcuları çek
-        const userMap = new Map<string, { name: string, username: string, photoURL: string }>();
-        if (commentUserIDs.size > 0) {
-          const usersQuery = query(
-            collection(db, 'users'),
-            where(documentId(), 'in', Array.from(commentUserIDs))
-          );
-          const usersSnapshot = await getDocs(usersQuery);
-          usersSnapshot.forEach((doc) => {
-            const data = doc.data();
-            userMap.set(doc.id, {
-              name: data.name || '', 
-              username: data.username || 'bilinmeyen',
-              photoURL: data.photoURL || '',
-            });
-          });
-        }
-
-        // 5. Verileri birleştir
-        const finalComments: Comment[] = fetchedCommentsData.map(comment => {
-           const userInfo = userMap.get(comment.userId); 
-           let finalName = 'Bilinmeyen Kullanıcı';
-           if (userInfo) {
-             if (userInfo.name) { finalName = userInfo.name; }
-             else if (userInfo.username && userInfo.username !== 'bilinmeyen') { finalName = `@${userInfo.username}`; }
-           }
-           const avatar = userInfo?.photoURL || `https://ui-avatars.com/api/?name=${userInfo?.name || userInfo?.username || 'Y'}&background=random`;
-
-           let createdAtString = 'şimdi';
-           if (comment.createdAt && typeof comment.createdAt.toDate === 'function') {
-              try {
-                createdAtString = comment.createdAt.toDate().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-              } catch {}
-           }
-
-           return {
-             id: comment.id,
-             text: comment.text || '',
-             createdAt: createdAtString,
-             userId: comment.userId, 
-             user: { name: finalName, avatar: avatar }
-           };
-        });
-        setComments(finalComments);
+        // 3. Yorumları Çek (servis kullanarak)
+        const fetchedComments = await getComments(id);
+        setComments(fetchedComments);
 
         // 6. Beğeni Durumunu Çek
         const likesRef = collection(db, 'recommendations', id, 'likes');
@@ -257,6 +135,11 @@ export default function RecommendationDetailScreen() {
             const myLikeRef = doc(db, 'recommendations', id, 'likes', currentUserId);
             const myLikeSnap = await getDoc(myLikeRef);
             setIsLiked(myLikeSnap.exists());
+            
+            // Kaydetme durumunu çek
+            const savedRef = doc(db, 'users', currentUserId, 'savedRecommendations', id);
+            const savedSnap = await getDoc(savedRef);
+            setIsBookmarked(savedSnap.exists());
         }
 
       } catch (err: any) {
@@ -291,28 +174,37 @@ export default function RecommendationDetailScreen() {
     setIsSubmittingComment(true); 
 
     try {
-        const commentData = {
+        const commentId = await addComment(id, authUser.uid, newComment.trim());
+        
+        if (commentId) {
+          const newCommentForState: Comment = {
+            id: commentId,
             text: newComment.trim(),
-            userId: authUser.uid,
-            createdAt: serverTimestamp(), 
-        };
-        
-        const commentsRef = collection(db, 'recommendations', id, 'comments');
-        const docRef = await addDoc(commentsRef, commentData);
-        
-        const newCommentForState: Comment = {
-            id: docRef.id,
-            text: commentData.text,
             createdAt: 'şimdi',
             userId: authUser.uid,
             user: {
                 name: currentUserProfile.name || `@${currentUserProfile.username}`,
-                avatar: currentUserProfile.photoURL || `https://ui-avatars.com/api/?name=${currentUserProfile.name || currentUserProfile.username}&background=random`,
+                avatar: getAvatarUrlWithFallback(currentUserProfile.photoURL, currentUserProfile.name, currentUserProfile.username),
             }
-        };
+          };
 
-        setComments(prevComments => [newCommentForState, ...prevComments]);
-        setNewComment('');
+          setComments(prevComments => [newCommentForState, ...prevComments]);
+          setNewComment('');
+
+          // Bildirim gönder
+          if (recommendation && recommendation.userId !== authUser.uid) {
+            await createCommentNotification(
+              id,
+              recommendation.userId,
+              authUser.uid,
+              currentUserProfile.name || currentUserProfile.username,
+              getAvatarUrlWithFallback(currentUserProfile.photoURL, currentUserProfile.name, currentUserProfile.username),
+              newComment.trim(),
+              recommendation.title,
+              recommendation.image
+            );
+          }
+        }
 
     } catch (err: any) {
         console.error("Yorum gönderme hatası:", err);
@@ -331,25 +223,79 @@ export default function RecommendationDetailScreen() {
       
       setIsLiking(true); 
       
-      const likeRef = doc(db, 'recommendations', id, 'likes', currentUserId);
-      
       try {
           if (isLiked) {
-              await deleteDoc(likeRef);
-              setIsLiked(false);
-              setLikeCount(prev => prev - 1);
+              const success = await unlikeRecommendation(currentUserId, id);
+              if (success) {
+                  setIsLiked(false);
+                  setLikeCount(prev => prev - 1);
+              } else {
+                  throw new Error("Beğeni kaldırılamadı");
+              }
           } else {
-              await setDoc(likeRef, {
-                  createdAt: serverTimestamp()
-              });
-              setIsLiked(true);
-              setLikeCount(prev => prev + 1);
+              const success = await likeRecommendation(currentUserId, id);
+              if (success) {
+                  setIsLiked(true);
+                  setLikeCount(prev => prev + 1);
+
+                  // Bildirim gönder
+                  if (recommendation && recommendation.userId !== currentUserId && currentUserProfile) {
+                    await createLikeNotification(
+                      id,
+                      recommendation.userId,
+                      currentUserId,
+                      currentUserProfile.name || currentUserProfile.username,
+                      getAvatarUrlWithFallback(currentUserProfile.photoURL, currentUserProfile.name, currentUserProfile.username),
+                      recommendation.title,
+                      recommendation.image
+                    );
+                  }
+              } else {
+                  throw new Error("Beğeni eklenemedi");
+              }
           }
       } catch (err: any) {
           console.error("Beğeni hatası:", err);
-          Alert.alert("Hata", "İşlem yapılırken bir sorun oluştu.");
+          Alert.alert("Hata", "İşlem yapılırken bir sorun oluştu: " + (err.message || ""));
+          // Hata durumunda beğeni durumunu önceki haline döndür
+          if (isLiked) {
+            setLikeCount(prev => prev + 1);
+            setIsLiked(true);
+          } else {
+            setLikeCount(prev => prev - 1);
+            setIsLiked(false);
+          }
       } finally {
           setIsLiking(false); 
+      }
+  };
+  
+  // Kaydetme Fonksiyonu
+  const handleSaveToggle = async () => {
+      if (!id || !currentUserId) {
+          Alert.alert("Hata", "Tavsiyeyi kaydetmek için giriş yapmalısınız.");
+          return;
+      }
+      
+      setIsSaving(true);
+      
+      const savedRef = doc(db, 'users', currentUserId, 'savedRecommendations', id);
+      
+      try {
+          if (isBookmarked) {
+              await deleteDoc(savedRef);
+              setIsBookmarked(false);
+          } else {
+              await setDoc(savedRef, {
+                  createdAt: serverTimestamp()
+              });
+              setIsBookmarked(true);
+          }
+      } catch (err: any) {
+          console.error("Kaydetme hatası:", err);
+          Alert.alert("Hata", "İşlem yapılırken bir sorun oluştu.");
+      } finally {
+          setIsSaving(false);
       }
   };
 
@@ -364,7 +310,7 @@ export default function RecommendationDetailScreen() {
   if (isLoading) {
     return (
       <View style={[styles.fullScreenCenter, containerStyle]}>
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+        <StatusBar barStyle="light-content" />
         <ActivityIndicator size="large" color={COLORS.primary} />
         <Text style={[styles.loadingText, mutedTextStyle]}>Yükleniyor...</Text>
       </View>
@@ -373,7 +319,7 @@ export default function RecommendationDetailScreen() {
   if (error || !recommendation) {
     return (
       <View style={[styles.fullScreenCenter, containerStyle]}>
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+        <StatusBar barStyle="light-content" />
         <Stack.Screen options={{ title: 'Hata' }} />
         <MaterialIcons name="error-outline" size={48} color="red" />
         <Text style={[styles.errorText, { color: 'red' }]}>{error}</Text>
@@ -383,11 +329,11 @@ export default function RecommendationDetailScreen() {
 
   const recommenderName = recommender?.name || 'Kullanıcı';
   const recommenderUsername = recommender?.username ? `@${recommender.username}` : '...';
-  const recommenderAvatar = recommender?.photoURL || `https://ui-avatars.com/api/?name=${recommenderName}&background=random`;
+  const recommenderAvatar = getAvatarUrlWithFallback(recommender?.photoURL, recommender?.name, recommender?.username);
 
   return (
     <SafeAreaView style={[styles.safeArea, containerStyle]} edges={['bottom']}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle="light-content" />
       <Stack.Screen
         options={{
           title: 'Tavsiye',
@@ -414,15 +360,13 @@ export default function RecommendationDetailScreen() {
           contentContainerStyle={styles.scrollContent}
           ref={scrollViewRef} 
         >
-          <ImageBackground
-            source={recommendation.image ? { uri: recommendation.image } : undefined}
-            style={[styles.heroImage, !recommendation.image && styles.imagePlaceholder]}
-            resizeMode="cover"
-          >
-            {!recommendation.image && (
-              <MaterialIcons name="image" size={64} color={mutedTextStyle.color} />
-            )}
-          </ImageBackground>
+          {recommendation.image && (
+            <ImageBackground
+              source={{ uri: recommendation.image }}
+              style={styles.heroImage}
+              resizeMode="cover"
+            />
+          )}
 
           <View style={styles.contentPadding}>
             <View>
@@ -449,30 +393,57 @@ export default function RecommendationDetailScreen() {
             </View>
 
             {/* --- GÜNCELLENMİŞ "Beğen" BUTONU --- */}
-            <Pressable 
-              style={[
-                styles.favoriteButton, 
-                isLiked && { backgroundColor: isDark ? COLORS.mutedDark : COLORS.mutedLight }
-              ]}
-              onPress={handleLikeToggle}
-              disabled={isLiking}
-            >
-              {isLiking ? (
-                <ActivityIndicator color={isLiked ? COLORS.primary : "#FFFFFF"} />
-              ) : (
-                <>
-                  <MaterialIcons 
-                    name={isLiked ? 'favorite' : 'favorite-border'} 
-                    size={24} 
-                    color={isLiked ? COLORS.primary : "#FFFFFF"} 
-                  />
-                  <Text style={[styles.favoriteButtonText, isLiked && {color: textStyle.color}]}>
-                    {isLiked ? 'Beğenildi' : 'Beğen'} 
-                    {likeCount > 0 && ` (${likeCount})`} 
-                  </Text>
-                </>
-              )}
-            </Pressable>
+            <View style={styles.buttonRow}>
+              <Pressable 
+                style={[
+                  styles.favoriteButton, 
+                  isLiked && { backgroundColor: isDark ? COLORS.mutedDark : COLORS.mutedLight }
+                ]}
+                onPress={handleLikeToggle}
+                disabled={isLiking}
+              >
+                {isLiking ? (
+                  <ActivityIndicator color={isLiked ? COLORS.primary : "#FFFFFF"} />
+                ) : (
+                  <>
+                    <MaterialIcons 
+                      name={isLiked ? 'favorite' : 'favorite-border'} 
+                      size={24} 
+                      color={isLiked ? COLORS.primary : "#FFFFFF"} 
+                    />
+                    <Text style={[styles.favoriteButtonText, isLiked && {color: textStyle.color}]}>
+                      {isLiked ? 'Beğenildi' : 'Beğen'} 
+                      {likeCount > 0 && ` (${likeCount})`} 
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+              
+              {/* --- Kaydet BUTONU --- */}
+              <Pressable 
+                style={[
+                  styles.saveButton, 
+                  isBookmarked && { backgroundColor: isDark ? COLORS.mutedDark : COLORS.mutedLight }
+                ]}
+                onPress={handleSaveToggle}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <ActivityIndicator color={isBookmarked ? COLORS.primary : "#FFFFFF"} />
+                ) : (
+                  <>
+                    <MaterialIcons 
+                      name={isBookmarked ? 'bookmark' : 'bookmark-border'} 
+                      size={24} 
+                      color={isBookmarked ? COLORS.primary : "#FFFFFF"} 
+                    />
+                    <Text style={[styles.saveButtonText, isBookmarked && {color: textStyle.color}]}>
+                      {isBookmarked ? 'Kaydedildi' : 'Kaydet'}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
             {/* --- GÜNCELLEME SONU --- */}
 
 
@@ -484,7 +455,16 @@ export default function RecommendationDetailScreen() {
               <View style={styles.commentsList}>
                 {comments.length > 0 ? (
                   comments.map((comment) => (
-                    <CommentItem key={comment.id} comment={comment} isDark={isDark} />
+                    <CommentItem 
+                      key={comment.id} 
+                      comment={comment} 
+                      isDark={isDark} 
+                      recommendationId={id!}
+                      onReply={(commentId, commentText) => {
+                        setNewComment(`@${comment.user.name} ${commentText}`);
+                        commentInputRef.current?.focus();
+                      }}
+                    />
                   ))
                 ) : (
                   <Text style={mutedTextStyle}>Henüz yorum yapılmamış.</Text>
@@ -612,6 +592,25 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   favoriteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    flex: 1,
+  },
+  saveButtonText: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',

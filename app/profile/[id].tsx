@@ -4,75 +4,36 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Link, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Image,
-    Pressable,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    useColorScheme,
-    View,
+  ActivityIndicator,
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  useColorScheme,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { CustomTabBar } from '../../components/CustomTabBar';
 // Firebase (Authentication ve Firestore)
 import {
-    collection,
-    doc,
-    documentId,
-    getDoc,
-    getDocs,
-    limit,
-    orderBy,
-    query,
-    serverTimestamp,
-    where,
-    writeBatch,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  serverTimestamp,
+  where,
+  writeBatch,
 } from 'firebase/firestore';
+import { COLORS } from '../../constants/theme';
 import { auth, db } from '../../firebaseConfig';
-
-// Renkler
-const COLORS = {
-  primary: '#4299e1', // Blue
-  backgroundLight: '#ffffff',
-  backgroundDark: '#121212',
-  textLight: '#1f2937', 
-  textDark: '#f3f4f6', 
-  mutedLight: '#6b7280', 
-  mutedDark: '#9ca3af', 
-  cardLight: '#ffffff',
-  cardDark: '#1f2937', 
-  buttonBgLight: '#ebf8ff', 
-  buttonBgDark: '#1e3a8a', 
-  buttonTextLight: '#3b82f6', 
-  buttonTextDark: '#bfdbfe', 
-};
-
-// --- TypeScript Tipleri ---
-type UserProfile = {
-  id: string; 
-  name: string;
-  username: string;
-  bio: string;
-  photoURL: string | null;
-  recommendationsCount?: number;
-  followersCount?: number;
-  followingCount?: number;
-};
-
-type RecommendationSnippet = {
-  id: string;
-  title: string;
-  category: string;
-  image: string | null;
-};
-
-type FollowUser = {
-    id: string;
-    name: string;
-    username: string;
-    avatar: string;
-};
+import { getFollowers, getFollowing } from '../../services/firebase/userService';
+import { FollowUser, RecommendationSnippet, UserProfile } from '../../types';
 
 // --- Alt Bileşenler ---
 
@@ -90,11 +51,13 @@ const RecommendationGridItem = ({ item, isDark }: { item: RecommendationSnippet,
         asChild
       >
       <Pressable style={[styles.gridItem, cardStyle]}>
-        <Image
-          source={item.image ? { uri: item.image } : require('../../assets/images/icon.png')}
-          style={styles.gridImage}
-          resizeMode="cover"
-        />
+        {item.image && (
+          <Image
+            source={{ uri: item.image }}
+            style={styles.gridImage}
+            resizeMode="cover"
+          />
+        )}
         <View style={styles.gridContent}>
           <Text style={[styles.gridTitle, textStyle]} numberOfLines={1}>{item.title}</Text>
           <Text style={[styles.gridCategory, mutedTextStyle]}>{item.category}</Text>
@@ -104,108 +67,13 @@ const RecommendationGridItem = ({ item, isDark }: { item: RecommendationSnippet,
   );
 };
 
-const FollowListItem = ({ 
-  user, 
-  isDark, 
-  isFollowing,
-  currentUserId
-}: { 
-  user: FollowUser, 
-  isDark: boolean, 
-  isFollowing: boolean,
-  currentUserId: string | undefined // Giriş yapan kullanıcı ID'si (opsiyonel)
-}) => {
-  
-  const [followingState, setFollowingState] = useState(isFollowing);
-  const [isLoading, setIsLoading] = useState(false); 
-
-  const textStyle = { color: isDark ? COLORS.textDark : COLORS.textLight };
-  const mutedTextStyle = { color: isDark ? COLORS.mutedDark : COLORS.mutedLight };
-
-  const handleFollowToggle = async () => {
-    if (!currentUserId || currentUserId === user.id) return; 
-    
-    setIsLoading(true);
-
-    const followingRef = doc(db, 'users', currentUserId, 'following', user.id);
-    const followerRef = doc(db, 'users', user.id, 'followers', currentUserId);
-
-    try {
-      const batch = writeBatch(db);
-
-      if (followingState) {
-        batch.delete(followingRef); 
-        batch.delete(followerRef);  
-      } else {
-        const timestamp = serverTimestamp();
-        batch.set(followingRef, { createdAt: timestamp }); 
-        batch.set(followerRef, { createdAt: timestamp });  
-      }
-      await batch.commit();
-      setFollowingState(!followingState);
-
-    } catch (err) {
-      console.error("Takip etme/bırakma hatası:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const renderButton = () => {
-    if (!currentUserId || currentUserId === user.id) {
-        return <View style={styles.followButtonBase} />; // Boş yer tutucu
-    }
-
-    if (isLoading) {
-       return (
-         <View style={[styles.followButtonBase, isDark ? styles.followingButtonDark : styles.followingButtonLight]}>
-           <ActivityIndicator size="small" color={isDark ? COLORS.textDark : COLORS.textLight} />
-         </View>
-       );
-    }
-
-    if (followingState) { 
-      return (
-        <Pressable 
-          style={[styles.followButtonBase, isDark ? styles.followingButtonDark : styles.followingButtonLight]} 
-          onPress={handleFollowToggle}
-        >
-          <Text style={[styles.followButtonText, isDark ? styles.followingTextDark : styles.followingTextLight]}>Takip Ediliyor</Text>
-        </Pressable>
-      );
-    } else { 
-      return (
-        <Pressable 
-          style={[styles.followButtonBase, styles.followButton]} 
-          onPress={handleFollowToggle}
-        >
-          <Text style={styles.followButtonText}>Takip Et</Text>
-        </Pressable>
-      );
-    }
-  };
-
-  return (
-    <View style={styles.followItemContainer}>
-      <View style={styles.followItemUser}>
-        <Image source={{ uri: user.avatar }} style={styles.avatarMedium} />
-        <View>
-          <Text style={[styles.followName, textStyle]}>{user.name}</Text>
-          <Text style={[styles.followUsername, mutedTextStyle]}>@{user.username}</Text>
-        </View>
-      </View>
-      {renderButton()}
-    </View>
-  );
-};
-
 
 // --- Ana Profil Ekranı ---
 
 export default function UserProfileScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const [activeTab, setActiveTab] = useState<'recommendations' | 'saved'>('recommendations');
+  const [activeTab, setActiveTab] = useState<'recommendations'>('recommendations');
   const router = useRouter(); 
   const { id: viewedUserId } = useLocalSearchParams<{ id: string }>(); // Görüntülenen profilin ID'si
   const currentUserId = auth.currentUser?.uid; // Giriş yapan kullanıcının (BENİM) ID'si
@@ -215,8 +83,7 @@ export default function UserProfileScreen() {
   const [userRecommendations, setUserRecommendations] = useState<RecommendationSnippet[]>([]);
   const [followers, setFollowers] = useState<FollowUser[]>([]);
   const [following, setFollowing] = useState<FollowUser[]>([]);
-  const [amIFollowingThisUser, setAmIFollowingThisUser] = useState(false); 
-  
+  const [amIFollowingThisUser, setAmIFollowingThisUser] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -264,15 +131,13 @@ export default function UserProfileScreen() {
         });
         setUserRecommendations(fetchedRecs);
         
-        // 3. Görüntülenen kullanıcının takipçi ID'lerini çek
-        const followersQuery = query(collection(db, 'users', viewedUserId, 'followers'), limit(5));
-        const followersSnapshot = await getDocs(followersQuery);
-        const followerUserIds = followersSnapshot.docs.map(doc => doc.id);
-
-        // 4. Görüntülenen kullanıcının takip edilen ID'lerini çek
-        const followingQuery = query(collection(db, 'users', viewedUserId, 'following'), limit(5));
-        const followingSnapshot = await getDocs(followingQuery);
-        const followingUserIds = followingSnapshot.docs.map(doc => doc.id);
+        // 3. Takipçi ve takip edilen listelerini çek (servis kullanarak)
+        const [followersList, followingList] = await Promise.all([
+          getFollowers(viewedUserId, 5),
+          getFollowing(viewedUserId, 5),
+        ]);
+        setFollowers(followersList);
+        setFollowing(followingList);
 
         // Ben bu kullanıcıyı takip ediyor muyum?
         if (currentUserId) {
@@ -280,39 +145,6 @@ export default function UserProfileScreen() {
             const myFollowingSnap = await getDoc(myFollowingRef);
             setAmIFollowingThisUser(myFollowingSnap.exists());
         }
-
-        // 5. Tüm bu ID'ler için kullanıcı detaylarını tek sorguda çek
-        const allUserIds = [...new Set([...followerUserIds, ...followingUserIds])];
-        const userMap = new Map<string, FollowUser>();
-        
-        if (allUserIds.length > 0) {
-            const usersQuery = query(
-              collection(db, 'users'),
-              where(documentId(), 'in', allUserIds)
-            );
-            const usersSnapshot = await getDocs(usersQuery);
-            usersSnapshot.forEach((doc) => {
-                const data = doc.data();
-                userMap.set(doc.id, {
-                    id: doc.id,
-                    name: data.name || 'İsimsiz',
-                    username: data.username || 'kullanici',
-                    avatar: data.photoURL || `https://ui-avatars.com/api/?name=${data.name || '?'}&background=random`,
-                });
-            });
-        }
-        
-        // 6. Takipçi listesini oluştur
-        const followersList = followerUserIds
-          .map(id => userMap.get(id))
-          .filter((user): user is FollowUser => user !== undefined);
-        setFollowers(followersList);
-        
-        // 7. Takip edilen listesini oluştur
-        const followingList = followingUserIds
-          .map(id => userMap.get(id))
-          .filter((user): user is FollowUser => user !== undefined);
-        setFollowing(followingList);
         
       } catch (err: any) {
         console.error("Profil verisi çekme hatası:", err.message);
@@ -339,7 +171,7 @@ export default function UserProfileScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.safeArea, containerStyle, styles.fullScreenCenter]}>
-         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+         <StatusBar barStyle="light-content" />
          <ActivityIndicator size="large" color={COLORS.primary} />
          <Text style={mutedTextStyle}>Profil yükleniyor...</Text>
       </SafeAreaView>
@@ -349,7 +181,7 @@ export default function UserProfileScreen() {
   if (error || !userProfile) { 
      return (
       <SafeAreaView style={[styles.safeArea, containerStyle, styles.fullScreenCenter]}>
-         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+         <StatusBar barStyle="light-content" />
          <Stack.Screen options={{ headerShown: true, title: "Hata", headerTitleAlign: 'center', headerLeft: () => (<Pressable onPress={() => router.back()}><MaterialIcons name="arrow-back" size={24} color={textStyle.color} /></Pressable>) }} />
          <MaterialIcons name="error-outline" size={48} color="red" />
          <Text style={[styles.errorText, { color: 'red' }]}>{error || "Profil bulunamadı."}</Text>
@@ -359,16 +191,14 @@ export default function UserProfileScreen() {
 
   const profileImageUrl = userProfile.photoURL;
   const ProfileImagePlaceholder = () => (
-    <View style={styles.profileImageContainer}>
-       <MaterialIcons name="person" size={60} color={isDark ? COLORS.mutedDark : COLORS.mutedLight} />
+    <View style={styles.profileImageContainerSmall}>
+       <MaterialIcons name="person" size={40} color={isDark ? COLORS.mutedDark : COLORS.mutedLight} />
     </View>
   );
-
-  const followingIdsSet = new Set(following.map(user => user.id)); 
   
   return (
-    <SafeAreaView style={[styles.safeArea, containerStyle]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+    <SafeAreaView style={[styles.safeArea, containerStyle]} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="light-content" />
       <Stack.Screen 
         options={{ 
             headerShown: true, 
@@ -386,56 +216,107 @@ export default function UserProfileScreen() {
         }} 
       />
 
-      <ScrollView>
+      <ScrollView contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 80 : 85 }}>
         <View style={styles.mainContent}>
-          {/* Profil Bilgileri */}
-          <View style={styles.profileInfoContainer}>
-            {profileImageUrl ? (
-              <Image source={{ uri: profileImageUrl }} style={styles.profileImage} />
-            ) : (
-              <ProfileImagePlaceholder />
-            )}
-            <Text style={[styles.profileName, textStyle]}>{userProfile.name || "İsimsiz"}</Text>
-            {userProfile.bio && (
-              <Text style={[styles.profileBio, mutedTextStyle]}>
-                {userProfile.bio}
-              </Text>
-            )}
-            
-            {currentUserId === viewedUserId ? (
-                <Pressable style={[styles.editButton, editButtonStyle]}>
-                    <Text style={[styles.editButtonText, editButtonTextStyle]}>Profili Düzenle</Text>
-                </Pressable>
-            ) : (
-                 <FollowListItem 
-                    user={{id: userProfile.id, name: userProfile.name, username: userProfile.username, avatar: userProfile.photoURL || ''}}
-                    isDark={isDark}
-                    isFollowing={amIFollowingThisUser}
-                    currentUserId={currentUserId}
-                 />
-            )}
-            
+          {/* Profil Bilgileri - Yeni Tasarım: Profil resmi solda, bilgiler yanında */}
+          <View style={styles.profileHeaderContainerNew}>
+            <View style={[styles.profileImageWrapperNew, { borderColor: isDark ? COLORS.primary : COLORS.primary }]}>
+              {profileImageUrl ? (
+                <Image source={{ uri: profileImageUrl }} style={styles.profileImageNewSmall} />
+              ) : (
+                <ProfileImagePlaceholder />
+              )}
+            </View>
+            <View style={styles.profileInfoContainer}>
+              <View style={styles.profileInfoHeader}>
+                <View style={styles.profileInfoText}>
+                  <Text style={[styles.profileNameNew, textStyle]}>{userProfile.name || "İsimsiz"}</Text>
+                  {userProfile.username && (
+                    <Text style={[styles.profileUsername, mutedTextStyle]}>@{userProfile.username}</Text>
+                  )}
+                </View>
+                {currentUserId === viewedUserId ? (
+                  <Pressable 
+                    style={[styles.editButtonNew, { backgroundColor: COLORS.primary }]}
+                    onPress={() => router.push('/edit-profile')}
+                  >
+                    <MaterialIcons name="edit" size={18} color="#FFFFFF" />
+                    <Text style={styles.editButtonTextNew}>Düzenle</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable 
+                    style={[
+                      styles.followButtonNew,
+                      amIFollowingThisUser 
+                        ? (isDark ? styles.followingButtonDark : styles.followingButtonLight)
+                        : { backgroundColor: COLORS.primary }
+                    ]}
+                    onPress={async () => {
+                      if (!currentUserId) return;
+                      const followingRef = doc(db, 'users', currentUserId, 'following', viewedUserId);
+                      const followerRef = doc(db, 'users', viewedUserId, 'followers', currentUserId);
+                      try {
+                        const batch = writeBatch(db);
+                        if (amIFollowingThisUser) {
+                          batch.delete(followingRef);
+                          batch.delete(followerRef);
+                          setAmIFollowingThisUser(false);
+                        } else {
+                          const timestamp = serverTimestamp();
+                          batch.set(followingRef, { createdAt: timestamp });
+                          batch.set(followerRef, { createdAt: timestamp });
+                          setAmIFollowingThisUser(true);
+                        }
+                        await batch.commit();
+                      } catch (err) {
+                        console.error('Takip hatası:', err);
+                      }
+                    }}
+                  >
+                    <Text style={[
+                      styles.followButtonTextNew,
+                      amIFollowingThisUser 
+                        ? (isDark ? styles.followingTextDark : styles.followingTextLight)
+                        : { color: '#FFFFFF' }
+                    ]}>
+                      {amIFollowingThisUser ? 'Takip Ediliyor' : 'Takip Et'}
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+              {userProfile.bio && (
+                <Text style={[styles.profileBioNew, mutedTextStyle]}>
+                  {userProfile.bio}
+                </Text>
+              )}
+            </View>
           </View>
 
-          {/* İstatistikler */}
-          <View style={styles.statsContainer}>
-            <View style={styles.statItem}>
-              <Text style={[styles.statNumber, textStyle]}>{userProfile.recommendationsCount || userRecommendations.length}</Text>
-              <Text style={[styles.statLabel, mutedTextStyle]}>Tavsiye</Text>
+          {/* İstatistikler - Tavsiye ilk sırada */}
+          <View style={[styles.statsContainerNew, { backgroundColor: isDark ? COLORS.cardDark : COLORS.cardLight }]}>
+            <View style={styles.statItemNew}>
+              <Text style={[styles.statNumberNew, { color: COLORS.primary }]}>{userProfile.recommendationsCount || userRecommendations.length}</Text>
+              <Text style={[styles.statLabelNew, mutedTextStyle]}>Tavsiye</Text>
             </View>
-            <View style={styles.statItem}>
-              <Text style={[styles.statNumber, textStyle]}>{userProfile.followersCount || followers.length}</Text>
-              <Text style={[styles.statLabel, mutedTextStyle]}>Takipçi</Text>
-            </View>
-            {/* --- DÜZELTME: </Etx>} hatası --- */}
-            <View style={styles.statItem}>
-              <Text style={[styles.statNumber, textStyle]}>{userProfile.followingCount || following.length}</Text>
-              <Text style={[styles.statLabel, mutedTextStyle]}>Takip</Text>
-            </View>
-            {/* --- DÜZELTME SONU --- */}
+            <View style={[styles.statDivider, { backgroundColor: isDark ? '#374151' : '#e5e7eb' }]} />
+            <Pressable 
+              style={styles.statItemNew} 
+              onPress={() => router.push(`/profile/${viewedUserId}/followers`)}
+            >
+              <Text style={[styles.statNumberNew, { color: COLORS.primary }]}>{userProfile.followersCount || followers.length}</Text>
+              <Text style={[styles.statLabelNew, mutedTextStyle]}>Takipçi</Text>
+            </Pressable>
+            <View style={[styles.statDivider, { backgroundColor: isDark ? '#374151' : '#e5e7eb' }]} />
+            <Pressable 
+              style={styles.statItemNew} 
+              onPress={() => router.push(`/profile/${viewedUserId}/following`)}
+            >
+              <Text style={[styles.statNumberNew, { color: COLORS.primary }]}>{userProfile.followingCount || following.length}</Text>
+              <Text style={[styles.statLabelNew, mutedTextStyle]}>Takip</Text>
+            </Pressable>
           </View>
 
-          {/* Sekme Navigasyonu */}
+          {/* Sekme Navigasyonu - Sadece Tavsiyeler */}
           <View style={[styles.tabContainer, separatorStyle]}>
             <Pressable
               style={[styles.tabButton, activeTab === 'recommendations' && activeTabBorderStyle]}
@@ -445,77 +326,25 @@ export default function UserProfileScreen() {
                 Tavsiyeler
               </Text>
             </Pressable>
-            <Pressable
-              style={[styles.tabButton, activeTab === 'saved' && activeTabBorderStyle]}
-              onPress={() => setActiveTab('saved')}
-            >
-              <Text style={[styles.tabText, activeTab === 'saved' ? activeTabStyle : inactiveTabStyle]}>
-                Kaydedilenler
-              </Text>
-            </Pressable>
           </View>
 
           {/* Sekme İçeriği */}
-          {activeTab === 'recommendations' && (
-            <View style={styles.gridContainer}>
-              {userRecommendations.length > 0 ? (
-                userRecommendations.map((item) => (
-                  <RecommendationGridItem key={item.id} item={item} isDark={isDark} />
-                ))
-              ) : (
-                <Text style={[mutedTextStyle, { marginTop: 20, textAlign: 'center' }]}>Henüz hiç tavsiye eklenmemiş.</Text>
-              )}
-            </View>
-          )}
-
-          {activeTab === 'saved' && (
-             <View style={{ padding: 20 }}>
-                 <Text style={mutedTextStyle}>Bu kullanıcının herkese açık kaydedilenleri yok.</Text>
-             </View>
-          )}
-
-          {/* Takipçi Listesi */}
-          <View style={[styles.followSection, { marginTop: 32 }]}>
-             <Text style={[styles.sectionTitle, textStyle]}>Takipçiler</Text>
-             <View style={styles.followList}>
-                {followers.length > 0 ? (
-                    followers.map((user) => (
-                        <FollowListItem 
-                            key={user.id} 
-                            user={user} 
-                            isDark={isDark} 
-                            isFollowing={followingIdsSet.has(user.id)}
-                            currentUserId={currentUserId}
-                        />
-                    ))
-                ) : (
-                    <Text style={mutedTextStyle}>Henüz takipçisi yok.</Text>
-                )}
-             </View>
+          <View style={styles.gridContainer}>
+            {userRecommendations.length > 0 ? (
+              userRecommendations.map((item) => (
+                <RecommendationGridItem key={item.id} item={item} isDark={isDark} />
+              ))
+            ) : (
+              <Text style={[mutedTextStyle, { marginTop: 20, textAlign: 'center' }]}>Henüz hiç tavsiye eklenmemiş.</Text>
+            )}
           </View>
 
-          {/* Takip Edilenler Listesi */}
-          <View style={[styles.followSection, { marginTop: 32 }]}>
-             <Text style={[styles.sectionTitle, textStyle]}>Takip Edilenler</Text>
-             <View style={styles.followList}>
-                {following.length > 0 ? (
-                    following.map((user) => (
-                        <FollowListItem 
-                            key={user.id} 
-                            user={user} 
-                            isDark={isDark} 
-                            isFollowing={true}
-                            currentUserId={currentUserId}
-                        />
-                    ))
-                ) : (
-                     <Text style={mutedTextStyle}>Henüz kimseyi takip etmiyor.</Text>
-                )}
-             </View>
-          </View>
 
         </View>
       </ScrollView>
+
+      {/* Custom Tab Bar */}
+      <CustomTabBar />
     </SafeAreaView>
   );
 }
@@ -528,17 +357,77 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
   headerTitle: { fontSize: 20, fontWeight: 'bold' },
   mainContent: { padding: 16 },
-  profileInfoContainer: { alignItems: 'center' },
-  profileImageContainer: { width: 112, height: 112, borderRadius: 56, backgroundColor: '#bfdbfe', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  profileImage: { width: 112, height: 112, borderRadius: 56, marginBottom: 16 },
-  profileName: { fontSize: 24, fontWeight: 'bold' },
-  profileBio: { textAlign: 'center', marginTop: 8, marginHorizontal: 24 },
-  editButton: { marginTop: 16, width: '100%', paddingVertical: 12, borderRadius: 8 },
-  editButtonText: { fontWeight: '600', textAlign: 'center' },
-  statsContainer: { flexDirection: 'row', justifyContent: 'space-around', textAlign: 'center', marginVertical: 24 },
-  statItem: { alignItems: 'center' },
-  statNumber: { fontSize: 20, fontWeight: 'bold' },
-  statLabel: { fontSize: 14 },
+  profileHeaderContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+    paddingTop: 8,
+  },
+  profileHeaderContainerNew: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 24,
+    paddingTop: 8,
+    gap: 16,
+  },
+  profileImageWrapperNew: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 3,
+    padding: 3,
+    backgroundColor: 'transparent',
+  },
+  profileInfoContainer: {
+    flex: 1,
+    gap: 8,
+  },
+  profileInfoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  profileInfoText: {
+    flex: 1,
+  },
+  profileImageWrapper: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 4,
+    padding: 4,
+    marginBottom: 16,
+    backgroundColor: 'transparent',
+  },
+  profileImageContainer: { width: 112, height: 112, borderRadius: 56, backgroundColor: '#bfdbfe', justifyContent: 'center', alignItems: 'center' },
+  profileImageContainerSmall: { width: 74, height: 74, borderRadius: 37, backgroundColor: '#bfdbfe', justifyContent: 'center', alignItems: 'center' },
+  profileImageNew: { width: 112, height: 112, borderRadius: 56 },
+  profileImageNewSmall: { width: 74, height: 74, borderRadius: 37 },
+  profileNameNew: { fontSize: 26, fontWeight: 'bold', marginBottom: 4 },
+  profileUsername: { fontSize: 16, marginBottom: 12 },
+  profileBioNew: { textAlign: 'left', marginTop: 4, fontSize: 14, lineHeight: 20 },
+  editButtonNew: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, gap: 6 },
+  editButtonTextNew: { color: '#FFFFFF', fontWeight: '600', fontSize: 15 },
+  followButtonNew: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, gap: 6 },
+  followButtonTextNew: { fontWeight: '600', fontSize: 15 },
+  statsContainerNew: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  statItemNew: { flex: 1, alignItems: 'center' },
+  statNumberNew: { fontSize: 24, fontWeight: 'bold', marginBottom: 4 },
+  statLabelNew: { fontSize: 13, fontWeight: '500' },
+  statDivider: { width: 1, height: 40 },
   tabContainer: { borderBottomWidth: 1, flexDirection: 'row' },
   tabButton: { flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderColor: 'transparent' },
   activeTabBorder: { borderColor: COLORS.primary },
